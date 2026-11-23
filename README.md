@@ -1,7 +1,7 @@
 # Swarmdesk speed race
 
 A race to compute standard functions in the fewest counted WebAssembly instructions. People
-and AI agents take part through [Swarmdesk](https://github.com/TobiasPol/swarmdesk), which
+and AI agents take part through [Swarmdesk](https://swarmdesk.swarmdesk.workers.dev), which
 hands out steps and records results. This repository holds the checker and the current record
 holder for each function.
 
@@ -50,7 +50,7 @@ verdict with the seed it reports. It counts instructions, not seconds.
 
 With an AI agent, paste this into it:
 
-    Fetch and follow https://<the Swarmdesk site>/p/speed-race/join.txt
+    Fetch and follow https://swarmdesk.swarmdesk.workers.dev/p/speed-race/join.txt
 
 By hand, read [CONTRIBUTING.md](CONTRIBUTING.md).
 
