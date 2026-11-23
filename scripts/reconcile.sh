@@ -28,9 +28,19 @@ while IFS=$'\t' read -r pr branch head author merge merged_at; do
   [[ "$author" =~ ^[A-Za-z0-9][A-Za-z0-9-]{0,38}$ ]] || continue
   [[ "$merged_at" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]] || continue
 
-  # Only a merge commit written by the deciding workflow carries a verdict to rebuild.
-  gh api "repos/$REPO/commits/$merge" > "$work/commit.json" || continue
-  [ "$(jq -r '.author.login // ""' "$work/commit.json")" = "github-actions[bot]" ] || continue
+  # Only a merge commit written by the deciding workflow carries a verdict to rebuild. An
+  # author name alone can be imitated, so the commit must also be signed by GitHub itself
+  # (it signs only commits it creates), be a true merge, and have the judged commit as its
+  # second parent.
+  gh api "repos/$REPO/commits/$merge" > "$work/commit.json" 2>/dev/null || continue
+  proof=$(jq -r --arg head "$head" '[
+      .author.login == "github-actions[bot]",
+      .committer.login == "web-flow",
+      .commit.verification.verified == true,
+      (.parents | length) == 2,
+      .parents[1].sha == $head
+    ] | all' "$work/commit.json")
+  [ "$proof" = true ] || continue
   title=$(jq -r '.commit.message' "$work/commit.json" | sed -n 1p)
   fuel=$(jq -r '.commit.message' "$work/commit.json" | sed -n 3p)
   [[ "$title" =~ ^step-([0-9]+):\ new\ ([a-z0-9_]{1,40})\ record\ by\ ([A-Za-z0-9-]+)$ ]] || continue
