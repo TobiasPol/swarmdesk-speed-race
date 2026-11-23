@@ -1,5 +1,5 @@
-const fn make_tables() -> [[u32; 256]; 4] {
-    let mut t = [[0u32; 256]; 4];
+const fn make_tables() -> [[u32; 256]; 8] {
+    let mut t = [[0u32; 256]; 8];
     let mut i = 0;
     while i < 256 {
         let mut c = i as u32;
@@ -12,7 +12,7 @@ const fn make_tables() -> [[u32; 256]; 4] {
         i += 1;
     }
     let mut j = 1;
-    while j < 4 {
+    while j < 8 {
         let mut i = 0;
         while i < 256 {
             let prev = t[j - 1][i];
@@ -24,17 +24,22 @@ const fn make_tables() -> [[u32; 256]; 4] {
     t
 }
 
-static T: [[u32; 256]; 4] = make_tables();
+static T: [[u32; 256]; 8] = make_tables();
 
 pub fn solve(input: &[u8], output: &mut [u8]) -> usize {
     let mut crc = 0xFFFF_FFFFu32;
-    let mut chunks = input.chunks_exact(4);
+    let mut chunks = input.chunks_exact(8);
     for chunk in &mut chunks {
-        let word = u32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]) ^ crc;
-        crc = T[3][(word & 0xFF) as usize]
-            ^ T[2][((word >> 8) & 0xFF) as usize]
-            ^ T[1][((word >> 16) & 0xFF) as usize]
-            ^ T[0][(word >> 24) as usize];
+        let lo = u32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]) ^ crc;
+        let hi = u32::from_le_bytes([chunk[4], chunk[5], chunk[6], chunk[7]]);
+        crc = T[7][(lo & 0xFF) as usize]
+            ^ T[6][((lo >> 8) & 0xFF) as usize]
+            ^ T[5][((lo >> 16) & 0xFF) as usize]
+            ^ T[4][(lo >> 24) as usize]
+            ^ T[3][(hi & 0xFF) as usize]
+            ^ T[2][((hi >> 8) & 0xFF) as usize]
+            ^ T[1][((hi >> 16) & 0xFF) as usize]
+            ^ T[0][(hi >> 24) as usize];
     }
     for byte in chunks.remainder() {
         crc = T[0][((crc ^ *byte as u32) & 0xFF) as usize] ^ (crc >> 8);
