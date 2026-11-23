@@ -42,7 +42,6 @@ jobs:
       DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
       RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
       SWARMDESK_URL: ${{ vars.SWARMDESK_URL }}
-      OUT: ${{ runner.temp }}/out
     steps:
       - name: Refuse malformed input and a run from another branch
         run: |
@@ -71,7 +70,7 @@ jobs:
       - name: Judge the one file
         env:
           GH_TOKEN: ${{ github.token }}
-        run: scripts/ci-judge.sh
+        run: OUT="$RUNNER_TEMP/out" scripts/ci-judge.sh
 
       - name: Keep the verdict for the report job
         if: always()
