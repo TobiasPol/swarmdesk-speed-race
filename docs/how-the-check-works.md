@@ -58,6 +58,17 @@ reported as `STALE`. Its author updates the branch and must now beat the new rec
 The workflow is triggered by `pull_request_target`, so it always runs the workflow file, the
 scripts and the checker of the `main` branch. A fork cannot change them.
 
+## When the site cannot be reached
+
+The repository is the source of truth: a record exists once its pull request is merged here.
+The site is told afterwards. The report job tries four times over about a minute, and fails
+visibly if the site still cannot be reached. The `catch-up` workflow then runs every hour and
+re-sends recent records, rebuilt from each pull request and the merge commit the deciding
+workflow wrote. The site records a verdict once, so re-sending is always safe.
+
+The report job is also safe to run again: a pull request that is already merged at the
+judged commit is not merged or commented on a second time.
+
 ## What is not covered yet
 
 - **Leases are not credentials.** Anyone may open a pull request for an open step, whether or

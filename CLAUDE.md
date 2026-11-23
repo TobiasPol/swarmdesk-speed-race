@@ -30,6 +30,9 @@ Use rustup's compiler: `export PATH="$HOME/.cargo/bin:$PATH"`.
 - `targets/<name>/holder.rs` — record holders; these are submissions, so no comments or strings
 - `.github/workflows/deciding.yml`, `scripts/ci-judge.sh`, `scripts/ci-report.sh` — the check
   that counts
+- `.github/workflows/catch-up.yml`, `scripts/reconcile.sh`, `scripts/send-verdict.sh` — re-send
+  records the site missed. `reconcile.sh` reads the merge commit message that `ci-report.sh`
+  writes, so the two must change together
 
 ## Rules
 - Record holder files are replaced only by the deciding workflow. Do not edit them by hand.

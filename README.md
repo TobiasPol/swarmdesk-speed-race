@@ -17,6 +17,7 @@ repository runs it and finds that it gives the right answers and beats the recor
 | `harness/` | the checker `sdcheck`: guard, build, run and judge |
 | `scripts/check.sh` | judge your file on your own machine |
 | `.github/workflows/deciding.yml` | the check that counts, run on every pull request |
+| `.github/workflows/catch-up.yml` | hourly: re-sends records the site missed |
 | `docs/how-the-check-works.md` | what the checker measures and why it can be trusted |
 
 ## The functions

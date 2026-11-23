@@ -1,0 +1,42 @@
+# Catches the site up once an hour. If the site was unreachable when a record was merged, the
+# record is in this repository but not on the site. This workflow re-sends recent records,
+# rebuilt from the pull request and the merge commit. The site records each one once.
+name: catch-up
+
+on:
+  schedule:
+    - cron: "23 * * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: catch-up
+  cancel-in-progress: false
+
+jobs:
+  resend:
+    # Nothing to catch up when the repository is not connected to a site.
+    if: vars.SWARMDESK_URL != ''
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: read
+    env:
+      REPO: ${{ github.repository }}
+      DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+      SWARMDESK_URL: ${{ vars.SWARMDESK_URL }}
+    steps:
+      - name: Check out (plain git, no stored credentials)
+        run: |
+          set -eu
+          git init -q .
+          git fetch -q --depth 1 "https://github.com/${GITHUB_REPOSITORY}.git" "$GITHUB_SHA"
+          git checkout -q --detach FETCH_HEAD
+
+      - name: Re-send recent records
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERDICT_SECRET: ${{ secrets.SWARMDESK_VERDICT_SECRET }}
+        run: scripts/reconcile.sh
