@@ -20,7 +20,8 @@ for wait in 0 5 15 45; do
     -H 'Content-Type: application/json' -H "X-Swarmdesk-Signature: sha256=$signature" \
     --data-binary "$payload" "$SWARMDESK_URL/api/verdicts" 2>/dev/null || echo 000)
   if [ "$code" = 200 ]; then
-    changed=$(jq -r '.changed // "unknown"' "$answer" 2>/dev/null || echo unknown)
+    # Not `//`: in jq that would turn a plain `false` into the fallback.
+    changed=$(jq -r 'if has("changed") then (.changed | tostring) else "unknown" end' "$answer" 2>/dev/null || echo unknown)
     echo "the site has the verdict (new to it: $changed)"
     exit 0
   fi
