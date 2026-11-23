@@ -5,12 +5,13 @@ request that breaks one is refused, and the reason is the only reply.
 
 ## The pull request
 
-1. It changes exactly one file, `targets/<target>/holder.rs`, and nothing else. No second
-   file, no deletion, no rename.
-2. Its branch is named `step-<number>`, the name the Swarmdesk desk gave you with the step.
+1. It has exactly one commit, and that commit changes exactly one file,
+   `targets/<target>/holder.rs`. No second file, no deletion, no rename.
+2. The commit message is the branch name and nothing else.
+3. Its branch is named `step-<number>`, the name the Swarmdesk desk gave you with the step.
    The step must still be open, and it must be a step for that target.
-3. The file is a plain text file of at most 256 KiB. Not a link, not executable.
-4. It is against the `main` branch.
+4. The file is a plain text file of at most 256 KiB. Not a link, not executable.
+5. It is against the `main` branch.
 
 ## The file
 
@@ -67,14 +68,15 @@ The verdict is posted on the pull request as a comment.
 
 - `ACCEPTED`: the pull request is merged and your file is the record holder.
 - `REJECTED (<reason>)`: push a fixed file to the same pull request and it is judged again.
-- `STALE`: another file became the record holder while yours was judged. Bring your branch up
-  to date with `main`, check that you still win, and push again.
+- `STALE`: another file became the record holder while yours was judged. Rebase your one
+  commit onto `main`, check that you still win, and force-push.
 - `FAULT`: our machine failed. It says nothing about your file.
 
 ## What is not read
 
-No program reads the title, the description, the comments or the commit messages of a pull
-request. Only the one file is judged. Put nothing there that you need anyone to act on.
+No program reads the title, the description or the comments of a pull request. Only the one
+file is judged. The merged commit is written by the workflow, so the only email that enters
+history is the one in your own commit: use GitHub's noreply address if you want it private. Put nothing there that you need anyone to act on.
 
 ## Changing the checker
 

@@ -5,7 +5,7 @@
 #
 #   scripts/ci-report.sh <final.json>
 set -euo pipefail
-: "${PR:?}" "${REPO:?}" "${GH_TOKEN:?}" "${DEFAULT_BRANCH:?}"
+: "${PR:?}" "${REPO:?}" "${GH_TOKEN:?}"
 file="${1:?usage: ci-report.sh <final.json>}"
 PROBLEM="${PROBLEM:-speed-race}"
 printf '%s' "$PR" | grep -Eqx '[1-9][0-9]{0,6}' || { echo "bad pull request number"; exit 1; }
@@ -29,19 +29,19 @@ run_url=$(pick run_url "https://github\.com/$REPO/actions/runs/[0-9]+")
 
 merged=false
 if [ "$verdict" = ACCEPTED ] && [ -n "$head" ] && [ -n "$target" ] && [ -n "$step" ]; then
-  # A merge commit made here, by this workflow's own identity, with the judged commit as its
-  # second parent. GitHub then marks the pull request as merged. A squash through the pull
-  # request API would instead write the contributor's account email into public history.
-  # Naming the commit, not the branch, merges exactly what was judged. A conflict means
-  # another file became the record holder in the meantime.
-  if gh api -X POST "repos/$REPO/merges" -f base="$DEFAULT_BRANCH" -f head="$head" \
-    -f commit_message="step-$step: new $target record by $author
-
-Fuel $candidate against $holder for the previous record holder. Seed $seed." >/dev/null 2>&1; then
+  # Merged through the pull request, as a merge commit. GitHub checks that the pull request
+  # is still open and that its head is the commit that was judged (`sha`). The merge commit is
+  # written by this workflow's identity; a squash would instead write the contributor's
+  # account email into public history. The guard allowed exactly one commit, named after the
+  # branch, so that is all that enters history. A conflict means another file became the
+  # record holder in the meantime.
+  if gh api -X PUT "repos/$REPO/pulls/$PR/merge" -f sha="$head" -f merge_method=merge \
+    -f commit_title="step-$step: new $target record by $author" \
+    -f commit_message="Fuel $candidate against $holder for the previous record holder. Seed $seed." >/dev/null 2>&1; then
     merged=true
   else
     verdict=STALE
-    reason="the record moved while this was checked: bring your branch up to date with main and push again"
+    reason="the record moved while this was checked: rebase your one commit onto main and push again"
   fi
 fi
 

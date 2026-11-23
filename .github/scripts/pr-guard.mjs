@@ -3,7 +3,7 @@
 // Plain node, no dependencies. Every value this script prints has passed a strict
 // pattern, so the shell never sees free text from a pull request.
 //
-//   node pr-guard.mjs pr <pr.json> <files.json> <tree.json> <repo> <default branch>
+//   node pr-guard.mjs pr <pr.json> <files.json> <tree.json> <commits.json> <repo> <default branch>
 //   node pr-guard.mjs step <steps.json> <step id> <target>
 //
 // Exit 0: prints one JSON object. Exit 1: prints {"refused": "<reason>"}. Exit 3: bad usage.
@@ -23,7 +23,7 @@ const refuse = (why) => {
 
 // The pull request must replace exactly one record holder file, as a plain file, and
 // change nothing else. Read from the API's own answers, never from a checkout.
-export function checkPr(pr, files, tree, repo, defaultBranch) {
+export function checkPr(pr, files, tree, commits, repo, defaultBranch) {
   if (pr?.state !== 'open') refuse('the pull request is not open');
   if (pr.base?.repo?.full_name !== repo) refuse('the pull request is not against this repository');
   if (pr.base?.ref !== defaultBranch) refuse(`the pull request is not against ${defaultBranch}`);
@@ -33,6 +33,13 @@ export function checkPr(pr, files, tree, repo, defaultBranch) {
   if (!LOGIN_RE.test(author ?? '')) refuse('the author is not a plain account name');
   const branch = BRANCH_RE.exec(pr.head?.ref ?? '');
   if (!branch) refuse('the branch must be named step-<number>, as the desk gave it');
+  // One commit, named after the branch. The merge keeps that commit in history, so it must
+  // hold the one change and nothing to read: no earlier commits, no message of its own.
+  if (pr.commits !== 1 || !Array.isArray(commits) || commits.length !== 1) {
+    refuse('the pull request must have exactly one commit');
+  }
+  if (commits[0].sha !== head) refuse('the commit list and the head commit disagree');
+  if (commits[0].commit?.message !== pr.head.ref) refuse('the commit message must be the branch name');
   // changed_files is the whole count, so a long file list cannot hide a second file.
   if (pr.changed_files !== 1 || !Array.isArray(files) || files.length !== 1) {
     refuse('the pull request must change exactly one file');
@@ -68,13 +75,13 @@ const json = (path) => JSON.parse(readFileSync(path, 'utf8'));
 
 function main(argv) {
   const [mode, ...rest] = argv;
-  if (mode === 'pr' && rest.length === 5) {
-    return checkPr(json(rest[0]), json(rest[1]), json(rest[2]), rest[3], rest[4]);
+  if (mode === 'pr' && rest.length === 6) {
+    return checkPr(json(rest[0]), json(rest[1]), json(rest[2]), json(rest[3]), rest[4], rest[5]);
   }
   if (mode === 'step' && rest.length === 3) {
     return checkStep(json(rest[0]), Number(rest[1]), rest[2]);
   }
-  console.error('usage: pr-guard.mjs pr <pr> <files> <tree> <repo> <branch> | step <steps> <id> <target>');
+  console.error('usage: pr-guard.mjs pr <pr> <files> <tree> <commits> <repo> <branch> | step <steps> <id> <target>');
   process.exit(3);
 }
 

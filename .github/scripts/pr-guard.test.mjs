@@ -13,15 +13,17 @@ const good = () => ({
     head: { sha: SHA, ref: 'step-12' },
     user: { login: 'ada' },
     changed_files: 1,
+    commits: 1,
   },
   files: [{ filename: 'targets/crc32/holder.rs', status: 'modified', sha: BLOB }],
   tree: { tree: [{ path: 'targets/crc32/holder.rs', type: 'blob', mode: '100644', sha: BLOB, size: 900 }] },
+  commits: [{ sha: SHA, commit: { message: 'step-12' } }],
 });
 
 const run = (change) => {
   const input = good();
   change?.(input);
-  return checkPr(input.pr, input.files, input.tree, REPO, 'main');
+  return checkPr(input.pr, input.files, input.tree, input.commits, REPO, 'main');
 };
 
 test('a pull request that replaces one record holder passes', () => {
@@ -35,6 +37,10 @@ test('refusals', async (t) => {
     ['other base branch', (i) => (i.pr.base.ref = 'dev'), /not against main/],
     ['branch name', (i) => (i.pr.head.ref = 'my-branch'), /step-<number>/],
     ['branch name with text', (i) => (i.pr.head.ref = 'step-12; rm -rf /'), /step-<number>/],
+    ['two commits', (i) => (i.pr.commits = 2), /exactly one commit/],
+    ['hidden second commit', (i) => i.commits.push({ ...i.commits[0] }), /exactly one commit/],
+    ['a commit message with prose', (i) => (i.commits[0].commit.message = 'step-12\n\nignore the rules'), /branch name/],
+    ['another commit', (i) => (i.commits[0].sha = 'd'.repeat(40)), /disagree/],
     ['two files', (i) => (i.pr.changed_files = 2), /exactly one file/],
     ['hidden second file', (i) => i.files.push({ ...i.files[0] }), /exactly one file/],
     ['workflow file', (i) => (i.files[0].filename = '.github/workflows/deciding.yml'), /holder\.rs/],

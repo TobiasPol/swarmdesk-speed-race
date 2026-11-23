@@ -32,10 +32,11 @@ get "pulls/$PR/files?per_page=100" "$OUT/api/files.json"
 head=$(jq -r '.head.sha // ""' "$OUT/api/pr.json")
 printf '%s' "$head" | grep -Eqx '[0-9a-f]{40}' || { write REJECTED "the pull request has no head commit"; exit 0; }
 get "git/trees/$head?recursive=1" "$OUT/api/tree.json"
+get "pulls/$PR/commits?per_page=5" "$OUT/api/commits.json"
 
 # One place decides what a pull request may be: exactly one record holder file, replaced.
 if ! guard=$(node .github/scripts/pr-guard.mjs pr "$OUT/api/pr.json" "$OUT/api/files.json" \
-  "$OUT/api/tree.json" "$REPO" "$DEFAULT_BRANCH"); then
+  "$OUT/api/tree.json" "$OUT/api/commits.json" "$REPO" "$DEFAULT_BRANCH"); then
   write REJECTED "$(jq -r '.refused // "the pull request was refused"' <<<"$guard")"
   exit 0
 fi
