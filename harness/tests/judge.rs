@@ -7,7 +7,8 @@ use std::path::Path;
 fn verdict(candidate: &str) -> (String, String) {
     let target = targets::find("crc32").unwrap();
     let work = sdcheck::work_dir();
-    let holder = Path::new("../targets/crc32/holder.rs");
+    // A fixed baseline, not the live record holder: records move, tests must not.
+    let holder = Path::new("tests/fixtures/crc32_baseline.rs");
     let report = judge(target, Path::new(candidate), holder, 11, &work);
     let _ = std::fs::remove_dir_all(&work);
     (report.verdict.to_string(), report.reason)
@@ -20,8 +21,8 @@ fn a_faster_file_is_accepted() {
 }
 
 #[test]
-fn the_record_holder_does_not_beat_itself() {
-    let (verdict, reason) = verdict("../targets/crc32/holder.rs");
+fn a_file_does_not_beat_itself() {
+    let (verdict, reason) = verdict("tests/fixtures/crc32_baseline.rs");
     assert_eq!(verdict, "REJECTED");
     assert!(reason.contains("percent less fuel"), "{reason}");
 }
