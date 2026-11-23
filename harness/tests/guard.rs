@@ -76,6 +76,21 @@ fn attributes_outside_the_list_are_refused() {
 }
 
 #[test]
+fn renaming_a_banned_macro_to_an_allowed_name_is_refused() {
+    refused("use core::include_bytes as assert;", "alias");
+    refused(
+        "use core::{concat as matches, include_str as unreachable};",
+        "alias",
+    );
+    refused(
+        "use core::prelude::v1::global_allocator as inline;",
+        "alias",
+    );
+    passes("fn f(x: u8) -> u32 { x as u32 }");
+    passes("use core::arch::wasm32 as w;");
+}
+
+#[test]
 fn other_escapes_are_refused() {
     refused("extern crate alloc;", "extern");
     refused("fn r#match() {}", "token");

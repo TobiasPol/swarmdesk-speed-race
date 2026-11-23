@@ -1,7 +1,8 @@
 //! Checks a compiled WebAssembly module before it is ever run: which features
 //! it uses, that it imports nothing, and that no instruction escapes the fuel
-//! count. Fuel in wasmtime 51 charges bulk memory copies and fills per byte,
-//! so those stay allowed; table and reference instructions are refused.
+//! count. Fuel in wasmtime 51 charges `memory.copy` and `memory.fill` per byte
+//! (`tests/fuel.rs` holds it to that), so those stay allowed. Table, reference
+//! and passive-segment instructions are refused.
 
 use wasmparser::{Operator, Parser, Payload, Validator, WasmFeatures};
 
@@ -57,7 +58,7 @@ fn body_rule(body: &wasmparser::FunctionBody<'_>) -> Result<(), String> {
     for op in reader {
         let op = op.map_err(|_| "the module cannot be parsed".to_string())?;
         if banned(&op) {
-            return Err("the module uses a table or reference instruction".into());
+            return Err("the module uses an instruction that is not allowed".into());
         }
     }
     Ok(())
@@ -74,6 +75,8 @@ fn banned(op: &Operator<'_>) -> bool {
             | Operator::TableCopy { .. }
             | Operator::TableInit { .. }
             | Operator::ElemDrop { .. }
+            | Operator::MemoryInit { .. }
+            | Operator::DataDrop { .. }
             | Operator::RefNull { .. }
             | Operator::RefIsNull
             | Operator::RefFunc { .. }

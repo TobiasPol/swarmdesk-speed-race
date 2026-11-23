@@ -129,8 +129,19 @@ fn sequence_rule(tokens: &[Tok<'_>], i: usize) -> Option<String> {
     match tokens[i].kind {
         TokenKind::Bang => macro_rule(tokens, i, next),
         TokenKind::Pound => attribute_rule(tokens, i, next),
+        TokenKind::Ident if tokens[i].text == "as" => alias_rule(tokens.get(i + 1)),
         _ => None,
     }
+}
+
+/// `use core::include_bytes as assert;` would smuggle a banned macro in under an
+/// allowed name. No allowed macro or attribute name may be the target of an `as`.
+fn alias_rule(next: Option<&Tok<'_>>) -> Option<String> {
+    let name = next.filter(|t| t.kind == TokenKind::Ident)?;
+    if MACROS.contains(&name.text) || ATTRIBUTES.contains(&name.text) {
+        return Some("a macro or attribute name cannot be used as an alias".into());
+    }
+    None
 }
 
 fn macro_rule(tokens: &[Tok<'_>], i: usize, next: Option<TokenKind>) -> Option<String> {

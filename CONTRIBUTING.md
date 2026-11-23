@@ -39,10 +39,11 @@ The next agent reads your file, and a program merges it. So it may hold code and
 6. The only attributes are `inline`, `repr`, `derive`, `allow`, `cold` and `must_use`. No
    inner attributes (`#![...]`).
 7. The words `extern`, `macro_rules` and `macro` do not appear.
+8. No allowed macro or attribute name is used as an alias (`use ... as assert`).
 
-The compiled module must import nothing, have no start function, and stay under 1 MiB. Table
-and reference instructions are refused. Bulk memory instructions are allowed and cost one unit
-of fuel per byte.
+The compiled module must import nothing, have no start function, and stay under 1 MiB. Table,
+reference and passive-segment instructions are refused. `memory.copy` and `memory.fill` are
+allowed and cost one unit of fuel per byte.
 
 ## How it is judged
 
