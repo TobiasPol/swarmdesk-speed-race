@@ -1,56 +1,105 @@
-fn get(buf: &[u8], i: usize) -> u32 {
+const MAX_VALUES: usize = 32768;
+const SMALL: usize = 32;
+
+static mut SCRATCH: [u32; MAX_VALUES] = [0; MAX_VALUES];
+
+#[inline(always)]
+fn load(buf: &[u8], i: usize) -> u32 {
     u32::from_le_bytes([buf[4 * i], buf[4 * i + 1], buf[4 * i + 2], buf[4 * i + 3]])
 }
 
-fn set(buf: &mut [u8], i: usize, value: u32) {
-    let bytes = value.to_le_bytes();
-    buf[4 * i] = bytes[0];
-    buf[4 * i + 1] = bytes[1];
-    buf[4 * i + 2] = bytes[2];
-    buf[4 * i + 3] = bytes[3];
+#[inline(always)]
+fn store(buf: &mut [u8], i: usize, value: u32) {
+    buf[4 * i..4 * i + 4].copy_from_slice(&value.to_le_bytes());
 }
 
-fn swap(buf: &mut [u8], a: usize, b: usize) {
-    let x = get(buf, a);
-    let y = get(buf, b);
-    set(buf, a, y);
-    set(buf, b, x);
+fn insertion(input: &[u8], output: &mut [u8], n: usize) {
+    let mut i = 0;
+    while i < n {
+        let value = load(input, i);
+        let mut j = i;
+        while j > 0 {
+            let before = load(output, j - 1);
+            if before <= value {
+                break;
+            }
+            store(output, j, before);
+            j -= 1;
+        }
+        store(output, j, value);
+        i += 1;
+    }
 }
 
-fn sift_down(buf: &mut [u8], mut root: usize, n: usize) {
-    loop {
-        let mut child = 2 * root + 1;
-        if child >= n {
-            break;
-        }
-        if child + 1 < n && get(buf, child) < get(buf, child + 1) {
-            child += 1;
-        }
-        if get(buf, root) >= get(buf, child) {
-            break;
-        }
-        swap(buf, root, child);
-        root = child;
+fn starts(counts: &mut [u32; 256]) {
+    let mut total = 0u32;
+    let mut k = 0;
+    while k < 256 {
+        let count = counts[k];
+        counts[k] = total;
+        total += count;
+        k += 1;
+    }
+}
+
+fn radix(input: &[u8], output: &mut [u8], n: usize, scratch: &mut [u32]) {
+    let mut c0 = [0u32; 256];
+    let mut c1 = [0u32; 256];
+    let mut c2 = [0u32; 256];
+    let mut c3 = [0u32; 256];
+    let mut i = 0;
+    while i < n {
+        c0[input[4 * i] as usize] += 1;
+        c1[input[4 * i + 1] as usize] += 1;
+        c2[input[4 * i + 2] as usize] += 1;
+        c3[input[4 * i + 3] as usize] += 1;
+        i += 1;
+    }
+    starts(&mut c0);
+    starts(&mut c1);
+    starts(&mut c2);
+    starts(&mut c3);
+    i = 0;
+    while i < n {
+        let value = load(input, i);
+        let slot = &mut c0[(value & 0xFF) as usize];
+        scratch[*slot as usize] = value;
+        *slot += 1;
+        i += 1;
+    }
+    i = 0;
+    while i < n {
+        let value = scratch[i];
+        let slot = &mut c1[((value >> 8) & 0xFF) as usize];
+        store(output, *slot as usize, value);
+        *slot += 1;
+        i += 1;
+    }
+    i = 0;
+    while i < n {
+        let value = load(output, i);
+        let slot = &mut c2[((value >> 16) & 0xFF) as usize];
+        scratch[*slot as usize] = value;
+        *slot += 1;
+        i += 1;
+    }
+    i = 0;
+    while i < n {
+        let value = scratch[i];
+        let slot = &mut c3[(value >> 24) as usize];
+        store(output, *slot as usize, value);
+        *slot += 1;
+        i += 1;
     }
 }
 
 pub fn solve(input: &[u8], output: &mut [u8]) -> usize {
     let n = input.len() / 4;
-    let mut i = 0;
-    while i < 4 * n {
-        output[i] = input[i];
-        i += 1;
-    }
-    let mut start = n / 2;
-    while start > 0 {
-        start -= 1;
-        sift_down(output, start, n);
-    }
-    let mut end = n;
-    while end > 1 {
-        end -= 1;
-        swap(output, 0, end);
-        sift_down(output, 0, end);
+    if n <= SMALL || n > MAX_VALUES {
+        insertion(input, output, n);
+    } else {
+        let scratch = unsafe { &mut *(&raw mut SCRATCH) };
+        radix(input, output, n, scratch);
     }
     4 * n
 }
