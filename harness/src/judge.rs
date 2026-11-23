@@ -22,6 +22,9 @@ pub struct Report {
     pub cases: usize,
     pub candidate_fuel: u64,
     pub holder_fuel: u64,
+    /// Help for the author on their own machine: which input failed and how. Printed by
+    /// the command line, never sent anywhere.
+    pub detail: String,
 }
 
 impl Report {
@@ -34,6 +37,7 @@ impl Report {
             cases: 0,
             candidate_fuel: 0,
             holder_fuel: 0,
+            detail: String::new(),
         }
     }
 
@@ -124,7 +128,7 @@ fn race(
     cases: &[Case],
 ) -> Report {
     report.cases = cases.len();
-    for case in cases {
+    for (index, case) in cases.iter().enumerate() {
         let expected = (target.reference)(&case.input);
         let cap = (target.out_cap)(case.input.len());
         let held = match run::run_case(engine, holder, &case.input, cap, HOLDER_FUEL_CAP) {
@@ -132,24 +136,51 @@ fn race(
             _ => return report.end("FAULT", "the record holder gave a wrong answer"),
         };
         let fuel_cap = held.fuel.saturating_mul(8).saturating_add(100_000);
-        match run::run_case(engine, candidate, &case.input, cap, fuel_cap) {
-            Ok(outcome) if outcome.output == expected => report.candidate_fuel += outcome.fuel,
-            Ok(_) => {
-                let why = format!("wrong answer, input class: {}", case.class);
-                return report.end("REJECTED", why);
+        let failure = match run::run_case(engine, candidate, &case.input, cap, fuel_cap) {
+            Ok(outcome) if outcome.output == expected => {
+                report.candidate_fuel += outcome.fuel;
+                report.holder_fuel += held.fuel;
+                continue;
             }
-            Err(reason) => {
-                let why = format!("{reason}, input class: {}", case.class);
-                return report.end("REJECTED", why);
-            }
-        }
-        report.holder_fuel += held.fuel;
+            Ok(outcome) => (
+                "wrong answer".to_string(),
+                mismatch(&expected, &outcome.output),
+            ),
+            Err(reason) => (reason, String::new()),
+        };
+        // A run that stops early has no meaningful totals.
+        (report.candidate_fuel, report.holder_fuel) = (0, 0);
+        report.detail = format!(
+            "stopped at input {} of {} ({}, {} bytes). {}",
+            index + 1,
+            cases.len(),
+            case.class,
+            case.input.len(),
+            failure.1
+        );
+        return report.end(
+            "REJECTED",
+            format!("{}, input class: {}", failure.0, case.class),
+        );
     }
     if wins(report.candidate_fuel, report.holder_fuel) {
         return report.end("ACCEPTED", "");
     }
     let why = format!("not at least {MARGIN_PERCENT} percent less fuel than the record holder");
     report.end("REJECTED", why)
+}
+
+/// Says where two answers part ways, for an author debugging on their own machine.
+fn mismatch(expected: &[u8], got: &[u8]) -> String {
+    let shared = expected.len().min(got.len());
+    let lengths = format!("expected {} bytes, got {}", expected.len(), got.len());
+    match (0..shared).find(|&i| expected[i] != got[i]) {
+        Some(at) => format!(
+            "{lengths}; first difference at byte {at}: expected 0x{:02x}, got 0x{:02x}",
+            expected[at], got[at]
+        ),
+        None => lengths,
+    }
 }
 
 /// True when the candidate burns at least `MARGIN_PERCENT` less fuel.
@@ -159,7 +190,16 @@ pub fn wins(candidate_fuel: u64, holder_fuel: u64) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::wins;
+    use super::{mismatch, wins};
+
+    #[test]
+    fn a_mismatch_names_the_first_differing_byte() {
+        assert_eq!(
+            mismatch(&[1, 2, 3, 4], &[1, 2, 9, 4]),
+            "expected 4 bytes, got 4; first difference at byte 2: expected 0x03, got 0x09"
+        );
+        assert_eq!(mismatch(&[1, 2, 3], &[1, 2]), "expected 3 bytes, got 2");
+    }
 
     #[test]
     fn margin_is_exact() {

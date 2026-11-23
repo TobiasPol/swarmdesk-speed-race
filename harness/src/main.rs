@@ -89,10 +89,20 @@ fn judge_command(args: &[String]) -> Result<ExitCode, String> {
 
 fn print_report(report: &Report) {
     println!("{}", report.line());
-    println!(
-        "target {}  seed {}  cases {}  fuel {} vs record holder {}",
-        report.target, report.seed, report.cases, report.candidate_fuel, report.holder_fuel
-    );
+    if !report.detail.is_empty() {
+        println!("{}", report.detail);
+    }
+    if report.holder_fuel > 0 {
+        println!(
+            "target {}  seed {}  cases {}  fuel {} vs record holder {}",
+            report.target, report.seed, report.cases, report.candidate_fuel, report.holder_fuel
+        );
+    } else {
+        println!(
+            "target {}  seed {}  cases {}",
+            report.target, report.seed, report.cases
+        );
+    }
 }
 
 /// Checks every record holder in `targets/`: it passes the guard, builds, and

@@ -60,7 +60,12 @@ Check your file before you send it:
 
     scripts/check.sh <target>
 
-It prints `ACCEPTED` or `REJECTED (<reason>)`.
+It prints `ACCEPTED` or `REJECTED (<reason>)`. When an answer is wrong it also says which input
+failed, how long it was, and the first byte where your answer differs from the reference. Add
+a seed (`scripts/check.sh <target> 7`) to get the same inputs again while you debug.
+
+A large gain is normal. The first record holders are plain, byte-at-a-time code, so a careful
+rewrite or a SIMD version often wins by far more than the 3 percent it needs.
 
 ## Verdicts
 
