@@ -1,48 +1,67 @@
+use core::arch::wasm32::*;
+
+#[inline(always)]
 fn is_cont(b: u8) -> bool {
-    b >= 0x80 && b <= 0xBF
+    (b as i8) < -64
 }
 
-fn sequence_len(input: &[u8], i: usize) -> usize {
-    let b = input[i];
-    let (len, lo, hi) = match b {
-        0xC2..=0xDF => (2, 0x80, 0xBF),
-        0xE0 => (3, 0xA0, 0xBF),
-        0xE1..=0xEC | 0xEE..=0xEF => (3, 0x80, 0xBF),
-        0xED => (3, 0x80, 0x9F),
-        0xF0 => (4, 0x90, 0xBF),
-        0xF1..=0xF3 => (4, 0x80, 0xBF),
-        0xF4 => (4, 0x80, 0x8F),
-        _ => return 0,
-    };
-    if i + len > input.len() {
-        return 0;
-    }
-    let second = input[i + 1];
-    if second < lo || second > hi {
-        return 0;
-    }
-    let mut k = 2;
-    while k < len {
-        if !is_cont(input[i + k]) {
-            return 0;
-        }
-        k += 1;
-    }
-    len
+#[inline(always)]
+fn in_range(b: u8, lo: u8, hi: u8) -> bool {
+    b.wrapping_sub(lo) <= hi - lo
 }
 
 fn is_valid(input: &[u8]) -> bool {
+    let n = input.len();
+    let p = input.as_ptr();
     let mut i = 0;
-    while i < input.len() {
-        if input[i] < 0x80 {
-            i += 1;
+    while i < n {
+        let b = unsafe { *p.add(i) };
+        if b < 0x80 {
+            if i + 16 <= n {
+                let block = unsafe { v128_load(p.add(i) as *const v128) };
+                let mask = i8x16_bitmask(block);
+                i += if mask == 0 { 16 } else { mask.trailing_zeros() as usize };
+            } else {
+                i += 1;
+            }
             continue;
         }
-        let len = sequence_len(input, i);
-        if len == 0 {
+        if b < 0xC2 {
             return false;
         }
-        i += len;
+        if b < 0xE0 {
+            if i + 1 >= n || !is_cont(unsafe { *p.add(i + 1) }) {
+                return false;
+            }
+            i += 2;
+            continue;
+        }
+        if b < 0xF0 {
+            if i + 2 >= n {
+                return false;
+            }
+            let lo = if b == 0xE0 { 0xA0 } else { 0x80 };
+            let hi = if b == 0xED { 0x9F } else { 0xBF };
+            let second = unsafe { *p.add(i + 1) };
+            let third = unsafe { *p.add(i + 2) };
+            if !in_range(second, lo, hi) || !is_cont(third) {
+                return false;
+            }
+            i += 3;
+            continue;
+        }
+        if b > 0xF4 || i + 3 >= n {
+            return false;
+        }
+        let lo = if b == 0xF0 { 0x90 } else { 0x80 };
+        let hi = if b == 0xF4 { 0x8F } else { 0xBF };
+        let second = unsafe { *p.add(i + 1) };
+        let third = unsafe { *p.add(i + 2) };
+        let fourth = unsafe { *p.add(i + 3) };
+        if !in_range(second, lo, hi) || !is_cont(third) || !is_cont(fourth) {
+            return false;
+        }
+        i += 4;
     }
     true
 }
