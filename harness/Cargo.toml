@@ -1,0 +1,12 @@
+[package]
+name = "sdcheck"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "The Swarmdesk speed race checker: guard, build, run and judge a submission."
+publish = false
+
+[dependencies]
+wasmtime = { version = "=51.0.0", default-features = false, features = ["cranelift", "runtime"] }
+wasmparser = "=0.263.0"
+ra-ap-rustc_lexer = "=0.186.0"

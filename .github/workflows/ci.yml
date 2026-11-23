@@ -1,0 +1,53 @@
+# Tests for the checker itself. Runs when the checker, its scripts or the workflows change.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths:
+      - "harness/**"
+      - "scripts/**"
+      - ".github/**"
+      - "Cargo.*"
+      - "rust-toolchain.toml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out (plain git, no stored credentials)
+        run: |
+          set -eu
+          git init -q .
+          git fetch -q --depth 1 "https://github.com/${GITHUB_REPOSITORY}.git" "$GITHUB_SHA"
+          git checkout -q --detach FETCH_HEAD
+
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ci-${{ runner.os }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
+
+      - name: Format and lint
+        run: |
+          cargo fmt --all --check
+          cargo clippy --release --all-targets --locked -- -D warnings
+
+      - name: Tests
+        run: |
+          cargo test --release --locked
+          node --test .github/scripts/
+
+      - name: Every record holder passes the guard and matches its reference
+        run: cargo run --release --locked --quiet -- selftest

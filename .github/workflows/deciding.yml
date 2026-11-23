@@ -1,0 +1,116 @@
+# The check that counts. It runs from the BASE branch for every pull request that touches a
+# record holder file, so the workflow, the scripts and the checker are the reviewed ones: a
+# fork cannot change any of them.
+#
+# The rule behind every line: the only thing taken from the pull request is the bytes of one
+# file. The fork is never checked out and nothing from it runs, except that the file is
+# compiled to WebAssembly and run inside wasmtime, which has no network, no files and no
+# credentials. The judge job cannot write anything. The report job can merge and comment, and
+# it never touches the submitted file.
+name: deciding
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+    paths: ["targets/**/holder.rs"]
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: Pull request number
+        required: true
+        type: string
+
+# This trigger would hand out a write token by default. Start from nothing.
+permissions: {}
+
+concurrency:
+  group: deciding-${{ github.event.pull_request.number || inputs.pr }}
+  cancel-in-progress: true
+
+jobs:
+  judge:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      pull-requests: read
+    env:
+      # Values from the event reach the scripts only as environment variables, never as text
+      # pasted into a script.
+      PR: ${{ github.event.pull_request.number || inputs.pr }}
+      REPO: ${{ github.repository }}
+      DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      SWARMDESK_URL: ${{ vars.SWARMDESK_URL }}
+      OUT: ${{ runner.temp }}/out
+    steps:
+      - name: Refuse malformed input and a run from another branch
+        run: |
+          set -eu
+          printf '%s' "$PR" | grep -Eqx '[1-9][0-9]{0,6}' || { echo "REFUSED: pr must be a number"; exit 1; }
+          [ "$GITHUB_REF" = "refs/heads/$DEFAULT_BRANCH" ] || { echo "REFUSED: start this run from $DEFAULT_BRANCH"; exit 1; }
+
+      - name: Check out the BASE only (plain git, no stored credentials)
+        run: |
+          set -eu
+          git init -q .
+          git fetch -q --depth 1 "https://github.com/${GITHUB_REPOSITORY}.git" "$GITHUB_SHA"
+          git checkout -q --detach FETCH_HEAD
+          [ "$(git rev-parse HEAD)" = "$GITHUB_SHA" ]
+          echo "base commit: $GITHUB_SHA"
+
+      - name: Reuse the built checker
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: sdcheck-${{ runner.os }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml', 'harness/**') }}
+
+      - name: Judge the one file
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: scripts/ci-judge.sh
+
+      - name: Keep the verdict for the report job
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: verdict
+          path: ${{ runner.temp }}/out/final.json
+          if-no-files-found: ignore
+          retention-days: 30
+
+  report:
+    needs: judge
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+    env:
+      PR: ${{ github.event.pull_request.number || inputs.pr }}
+      REPO: ${{ github.repository }}
+      SWARMDESK_URL: ${{ vars.SWARMDESK_URL }}
+    steps:
+      - name: Fetch the verdict
+        continue-on-error: true
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: verdict
+          path: verdict
+
+      - name: Fetch the report script from the BASE
+        run: |
+          set -eu
+          git init -q base
+          git -C base fetch -q --depth 1 "https://github.com/${GITHUB_REPOSITORY}.git" "$GITHUB_SHA"
+          git -C base checkout -q --detach FETCH_HEAD
+
+      - name: Merge on ACCEPTED, comment, tell the site
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERDICT_SECRET: ${{ secrets.SWARMDESK_VERDICT_SECRET }}
+        run: base/scripts/ci-report.sh verdict/final.json
