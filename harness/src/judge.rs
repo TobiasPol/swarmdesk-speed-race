@@ -135,11 +135,11 @@ fn race(
         match run::run_case(engine, candidate, &case.input, cap, fuel_cap) {
             Ok(outcome) if outcome.output == expected => report.candidate_fuel += outcome.fuel,
             Ok(_) => {
-                let why = format!("wrong answer on a {} input", case.class);
+                let why = format!("wrong answer, input class: {}", case.class);
                 return report.end("REJECTED", why);
             }
             Err(reason) => {
-                let why = format!("{reason} on a {} input", case.class);
+                let why = format!("{reason}, input class: {}", case.class);
                 return report.end("REJECTED", why);
             }
         }
