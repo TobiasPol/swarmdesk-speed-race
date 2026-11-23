@@ -15,7 +15,7 @@ holder for each function.
 - `cargo test --release` — run the checker's tests
 - `cargo run --release -- selftest` — check every record holder against its reference
 - `cargo fmt --all --check && cargo clippy --release --all-targets -- -D warnings` — style
-- `node --test .github/scripts/` — tests for the pull request guard
+- `node --test .github/scripts/pr-guard.test.mjs` — tests for the pull request guard
 - `scripts/check.sh <target>` — judge a working copy against the record holder on main
 
 Use rustup's compiler: `export PATH="$HOME/.cargo/bin:$PATH"`.

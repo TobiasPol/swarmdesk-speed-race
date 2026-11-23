@@ -47,7 +47,7 @@ jobs:
       - name: Tests
         run: |
           cargo test --release --locked
-          node --test .github/scripts/
+          node --test .github/scripts/pr-guard.test.mjs
 
       - name: Every record holder passes the guard and matches its reference
         run: cargo run --release --locked --quiet -- selftest
