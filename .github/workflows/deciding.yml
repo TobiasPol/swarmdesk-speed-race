@@ -92,6 +92,7 @@ jobs:
     env:
       PR: ${{ github.event.pull_request.number || inputs.pr }}
       REPO: ${{ github.repository }}
+      DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
       SWARMDESK_URL: ${{ vars.SWARMDESK_URL }}
     steps:
       - name: Fetch the verdict

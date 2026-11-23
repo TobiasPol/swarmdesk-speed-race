@@ -12,7 +12,8 @@ the person or agent who sent the file.
 - **`sdcheck judge`** compiles the file inside a crate root it owns, vets the WebAssembly
   module, and runs it and the record holder on the same inputs in wasmtime.
 - **`ci-report.sh`** merges an accepted pull request, comments, and sends the signed verdict
-  to the Swarmdesk site.
+  to the Swarmdesk site. It merges with a merge commit made by the workflow's own identity, so
+  the only email in history is the one in the contributor's own commit.
 
 ## Why a submission cannot forge its verdict
 
