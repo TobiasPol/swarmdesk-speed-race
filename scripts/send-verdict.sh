@@ -10,7 +10,8 @@ set -euo pipefail
 : "${SWARMDESK_URL:?}" "${VERDICT_SECRET:?}"
 file="${1:?usage: send-verdict.sh <payload.json>}"
 printf '%s' "$SWARMDESK_URL" | grep -Eqx 'https://[a-z0-9.-]+' || { echo "bad site address"; exit 2; }
-payload=$(cat "$file")
+# The time of sending is part of what is signed, so a recorded request cannot be sent again later.
+payload=$(jq -c --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '. + {sent_at: $at}' "$file")
 signature=$(printf '%s' "$payload" | openssl dgst -sha256 -hmac "$VERDICT_SECRET" -hex | sed 's/^.* //')
 answer=$(mktemp)
 

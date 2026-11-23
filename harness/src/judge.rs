@@ -20,8 +20,12 @@ pub struct Report {
     pub target: &'static str,
     pub seed: u64,
     pub cases: usize,
+    /// How many sets of inputs were run. The deciding check runs several, each from a new seed.
+    pub runs: usize,
     pub candidate_fuel: u64,
     pub holder_fuel: u64,
+    /// The record holder gave a wrong answer on at least one input.
+    pub holder_faulty: bool,
     /// Help for the author on their own machine: which input failed and how. Printed by
     /// the command line, never sent anywhere.
     pub detail: String,
@@ -35,8 +39,10 @@ impl Report {
             target,
             seed,
             cases: 0,
+            runs: 0,
             candidate_fuel: 0,
             holder_fuel: 0,
+            holder_faulty: false,
             detail: String::new(),
         }
     }
@@ -61,15 +67,18 @@ impl Report {
         format!(
             concat!(
                 "{{\"verdict\":\"{}\",\"reason\":\"{}\",\"target\":\"{}\",\"seed\":\"{}\",",
-                "\"cases\":{},\"candidate_fuel\":{},\"holder_fuel\":{},\"margin_percent\":{}}}"
+                "\"cases\":{},\"runs\":{},\"candidate_fuel\":{},\"holder_fuel\":{},",
+                "\"holder_faulty\":{},\"margin_percent\":{}}}"
             ),
             self.verdict,
             reason,
             self.target,
             self.seed,
             self.cases,
+            self.runs,
             self.candidate_fuel,
             self.holder_fuel,
+            self.holder_faulty,
             MARGIN_PERCENT
         )
     }
@@ -83,7 +92,19 @@ pub fn judge(
     seed: u64,
     work: &Path,
 ) -> Report {
-    let report = Report::new(target.name, seed);
+    judge_runs(target, candidate, holder, &[seed], work)
+}
+
+/// Judges on one set of inputs per seed. The candidate must answer every input of every set
+/// correctly, and the margin is taken over all sets together, so one lucky set decides nothing.
+pub fn judge_runs(
+    target: &'static Target,
+    candidate: &Path,
+    holder: &Path,
+    seeds: &[u64],
+    work: &Path,
+) -> Report {
+    let mut report = Report::new(target.name, seeds.first().copied().unwrap_or(0));
     let source = match std::fs::read(candidate) {
         Ok(bytes) => bytes,
         Err(_) => return report.end("FAULT", "the submission could not be read"),
@@ -103,15 +124,32 @@ pub fn judge(
         Ok(program) => program,
         Err(reason) => return report.end("REJECTED", reason),
     };
-    let cases = (target.generate)(&mut Rng::new(seed));
-    race(
-        report,
-        target,
-        &engine,
-        &candidate_program,
-        &holder_program,
-        &cases,
-    )
+    for &seed in seeds {
+        let cases = (target.generate)(&mut Rng::new(seed));
+        let programs = (&candidate_program, &holder_program);
+        if let Err(reason) = race(&mut report, target, &engine, programs, &cases, seed) {
+            // A run that stops early has no meaningful totals.
+            (report.candidate_fuel, report.holder_fuel) = (0, 0);
+            return report.end("REJECTED", reason);
+        }
+        report.runs += 1;
+    }
+    decide(report)
+}
+
+/// The verdict for a candidate that answered every input correctly.
+fn decide(report: Report) -> Report {
+    // A record holder that answers wrongly is no record. A correct file replaces it whatever
+    // its fuel, so that a faulty record holder can never block its function.
+    if report.holder_faulty {
+        let why = "replaces a record holder that gave a wrong answer";
+        return report.end("ACCEPTED", why);
+    }
+    if wins(report.candidate_fuel, report.holder_fuel) {
+        return report.end("ACCEPTED", "");
+    }
+    let why = format!("not at least {MARGIN_PERCENT} percent less fuel than the record holder");
+    report.end("REJECTED", why)
 }
 
 fn load(engine: &Engine, source: &Path, work: &Path, label: &str) -> Result<Program, String> {
@@ -119,27 +157,37 @@ fn load(engine: &Engine, source: &Path, work: &Path, label: &str) -> Result<Prog
     Program::load(engine, &wasm)
 }
 
+/// Runs one set of inputs. `Err` holds the reason the candidate is rejected.
 fn race(
-    mut report: Report,
+    report: &mut Report,
     target: &Target,
     engine: &Engine,
-    candidate: &Program,
-    holder: &Program,
+    (candidate, holder): (&Program, &Program),
     cases: &[Case],
-) -> Report {
-    report.cases = cases.len();
+    seed: u64,
+) -> Result<(), String> {
+    report.cases += cases.len();
     for (index, case) in cases.iter().enumerate() {
         let expected = (target.reference)(&case.input);
         let cap = (target.out_cap)(case.input.len());
         let held = match run::run_case(engine, holder, &case.input, cap, HOLDER_FUEL_CAP) {
-            Ok(outcome) if outcome.output == expected => outcome,
-            _ => return report.end("FAULT", "the record holder gave a wrong answer"),
+            Ok(outcome) if outcome.output == expected => Some(outcome.fuel),
+            _ => None,
         };
-        let fuel_cap = held.fuel.saturating_mul(8).saturating_add(100_000);
+        let fuel_cap = match held {
+            Some(fuel) => fuel.saturating_mul(8).saturating_add(100_000),
+            None => HOLDER_FUEL_CAP,
+        };
         let failure = match run::run_case(engine, candidate, &case.input, cap, fuel_cap) {
             Ok(outcome) if outcome.output == expected => {
-                report.candidate_fuel += outcome.fuel;
-                report.holder_fuel += held.fuel;
+                // Fuel is compared only on inputs both files answered correctly.
+                match held {
+                    Some(fuel) => {
+                        report.candidate_fuel += outcome.fuel;
+                        report.holder_fuel += fuel;
+                    }
+                    None => report.holder_faulty = true,
+                }
                 continue;
             }
             Ok(outcome) => (
@@ -148,26 +196,19 @@ fn race(
             ),
             Err(reason) => (reason, String::new()),
         };
-        // A run that stops early has no meaningful totals.
-        (report.candidate_fuel, report.holder_fuel) = (0, 0);
         report.detail = format!(
-            "stopped at input {} of {} ({}, {} bytes). {}",
+            "stopped at input {} of {} in run {} with seed {} ({}, {} bytes). {}",
             index + 1,
             cases.len(),
+            report.runs + 1,
+            seed,
             case.class,
             case.input.len(),
             failure.1
         );
-        return report.end(
-            "REJECTED",
-            format!("{}, input class: {}", failure.0, case.class),
-        );
+        return Err(format!("{}, input class: {}", failure.0, case.class));
     }
-    if wins(report.candidate_fuel, report.holder_fuel) {
-        return report.end("ACCEPTED", "");
-    }
-    let why = format!("not at least {MARGIN_PERCENT} percent less fuel than the record holder");
-    report.end("REJECTED", why)
+    Ok(())
 }
 
 /// Says where two answers part ways, for an author debugging on their own machine.

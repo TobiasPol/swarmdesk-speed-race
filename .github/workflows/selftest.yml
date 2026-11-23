@@ -1,0 +1,62 @@
+# Checks every record holder on main against its reference, on fixed and on fresh inputs.
+# Runs once a day and after every new record. A failure opens an issue, because a record
+# holder that answers wrongly must be seen by a person.
+name: selftest
+
+on:
+  schedule:
+    - cron: "41 5 * * *"
+  workflow_dispatch:
+  workflow_call:
+
+permissions: {}
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    env:
+      DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+    steps:
+      - name: Check out main as it is now (plain git, no stored credentials)
+        run: |
+          set -eu
+          git init -q .
+          git fetch -q --depth 1 "https://github.com/${GITHUB_REPOSITORY}.git" "refs/heads/${DEFAULT_BRANCH}"
+          git checkout -q --detach FETCH_HEAD
+          echo "checking $(git rev-parse HEAD)"
+
+      - name: Reuse the built checker
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: sdcheck-${{ runner.os }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml', 'harness/**') }}
+
+      - name: Check every record holder
+        run: |
+          set -eu
+          cargo build --release --locked --quiet
+          ./target/release/sdcheck selftest
+
+  # This job builds and runs nothing, so it may hold the one permission the check must not.
+  alarm:
+    needs: check
+    if: always() && needs.check.result == 'failure'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      issues: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    steps:
+      - name: Open an issue
+        run: |
+          gh issue create --repo "$REPO" --title "A record holder failed the self-test" \
+            --body "The self-test failed. A record holder on main may answer wrongly. A correct submission for that function replaces it. The run: $RUN_URL"

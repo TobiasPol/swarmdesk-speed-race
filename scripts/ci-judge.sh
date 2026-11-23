@@ -43,7 +43,20 @@ fi
 target=$(jq -r .target <<<"$guard")
 step=$(jq -r .step <<<"$guard")
 blob=$(jq -r .blob <<<"$guard")
-meta=$(jq -c '{target, step, head_sha: .head, author}' <<<"$guard")
+author=$(jq -r .author <<<"$guard")
+# The record holder this run compares against, by the content hash of the very file the
+# checker will read. The report job writes the record only if main still holds this file.
+holder_blob=$(git hash-object "targets/$target/holder.rs")
+meta=$(jq -c --arg holder "$holder_blob" \
+  '{target, step, head_sha: .head, author, candidate_blob: .blob, holder_blob: $holder}' <<<"$guard")
+
+# One author may not fill the queue, and one pull request is not judged for ever.
+get "pulls?state=open&per_page=100" "$OUT/api/open.json"
+get "issues/$PR/comments?per_page=100" "$OUT/api/comments.json"
+if ! limits=$(node .github/scripts/pr-guard.mjs limits "$OUT/api/open.json" "$OUT/api/comments.json" "$author"); then
+  write REJECTED "$(jq -r '.refused // "the pull request was refused"' <<<"$limits")" "$meta"
+  exit 0
+fi
 
 # The step must be open at the desk. Without a desk address the repository judges on its own.
 if [ -n "${SWARMDESK_URL:-}" ]; then
@@ -60,10 +73,17 @@ fi
 
 # The content arrives by its hash, as bytes, into a file this script creates.
 get "git/blobs/$blob" "$OUT/candidate.rs" "application/vnd.github.raw"
+# The bytes that are judged are the bytes the report job will write as the record.
+if [ "$(git hash-object "$OUT/candidate.rs")" != "$blob" ]; then
+  write FAULT "the file that arrived is not the file of the pull request" "$meta"
+  exit 0
+fi
 
 cargo build --release --locked --quiet
 set +e
-env -u GH_TOKEN ./target/release/sdcheck judge --target "$target" \
+# Six sets of fresh inputs: the first decides nothing alone. The candidate must answer all of
+# them correctly, and the margin is taken over all six together.
+env -u GH_TOKEN ./target/release/sdcheck judge --target "$target" --confirm 5 \
   --candidate "$OUT/candidate.rs" --holder "targets/$target/holder.rs" --json "$OUT/verdict.json"
 set -e
 if [ ! -s "$OUT/verdict.json" ]; then

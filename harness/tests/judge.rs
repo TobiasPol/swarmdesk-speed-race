@@ -84,3 +84,69 @@ fn every_record_holder_matches_its_reference() {
         );
     }
 }
+
+/// A file that is wrong for some inputs and happens to meet none of them on seed 6.
+const POISON: &str = "tests/fixtures/crc32_poison.rs";
+
+fn runs(candidate: &str, holder: &str, seeds: &[u64]) -> sdcheck::judge::Report {
+    let target = targets::find("crc32").unwrap();
+    let work = sdcheck::work_dir();
+    let report = sdcheck::judge::judge_runs(
+        target,
+        Path::new(candidate),
+        Path::new(holder),
+        seeds,
+        &work,
+    );
+    let _ = std::fs::remove_dir_all(&work);
+    report
+}
+
+#[test]
+fn one_lucky_set_of_inputs_is_not_enough() {
+    let baseline = "tests/fixtures/crc32_baseline.rs";
+    assert_eq!(runs(POISON, baseline, &[6]).verdict, "ACCEPTED");
+    let confirmed = runs(POISON, baseline, &[6, 7, 8, 9, 10, 11]);
+    assert_eq!(confirmed.verdict, "REJECTED");
+    assert!(
+        confirmed.reason.contains("wrong answer"),
+        "{}",
+        confirmed.reason
+    );
+    assert_eq!((confirmed.candidate_fuel, confirmed.holder_fuel), (0, 0));
+}
+
+#[test]
+fn a_faulty_record_holder_blocks_nobody() {
+    for candidate in [
+        "tests/fixtures/crc32_fast.rs",
+        "tests/fixtures/crc32_baseline.rs",
+    ] {
+        let report = runs(candidate, POISON, &[1, 2]);
+        assert_eq!(report.verdict, "ACCEPTED", "{candidate}");
+        assert!(report.holder_faulty);
+        assert!(
+            report.reason.contains("replaces a record holder"),
+            "{}",
+            report.reason
+        );
+    }
+}
+
+#[test]
+fn a_wrong_file_does_not_replace_a_faulty_record_holder() {
+    let report = runs("tests/fixtures/wrong.rs", POISON, &[1]);
+    assert_eq!(report.verdict, "REJECTED");
+}
+
+#[test]
+fn the_margin_is_taken_over_all_runs_together() {
+    let report = runs(
+        "tests/fixtures/crc32_fast.rs",
+        "tests/fixtures/crc32_baseline.rs",
+        &[11, 12, 13],
+    );
+    assert_eq!((report.verdict, report.runs), ("ACCEPTED", 3));
+    assert!(report.cases > 60);
+    assert!(!report.holder_faulty);
+}

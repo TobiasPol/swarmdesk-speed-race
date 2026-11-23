@@ -40,8 +40,10 @@ repository runs it and finds that it gives the right answers and beats the recor
 3. The checker compiles the file and the current record holder to WebAssembly and runs both on
    the same fresh, random inputs.
 4. The file must give the reference answer on every input and burn at least 3 percent less
-   fuel than the record holder.
-5. On `ACCEPTED` the pull request is merged at once and the file is the new record holder.
+   fuel than the record holder. The deciding check runs six sets of fresh inputs and takes
+   the margin over all of them.
+5. On `ACCEPTED` the file becomes the new record holder at once: the workflow writes it to
+   `main` as its own commit and closes the pull request.
 
 The score is the fuel that [wasmtime](https://wasmtime.dev) counts: roughly one unit per
 WebAssembly instruction executed. It is the same on every machine, so anyone can repeat a

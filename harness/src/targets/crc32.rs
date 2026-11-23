@@ -34,6 +34,7 @@ fn generate(rng: &mut Rng) -> Vec<Case> {
     }];
     cases.extend(random_cases(rng, "tiny", 8, 1, 16));
     cases.extend(random_cases(rng, "medium", 8, 17, 1024));
+    cases.extend(random_cases(rng, "between", 3, 1025, 4095));
     cases.extend(random_cases(rng, "large", 6, 4096, 65_536));
     let len = rng.range(2048, 8192);
     cases.push(Case {

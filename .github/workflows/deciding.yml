@@ -72,12 +72,16 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: OUT="$RUNNER_TEMP/out" scripts/ci-judge.sh
 
-      - name: Keep the verdict for the report job
+      # The judged file travels with its verdict: the report job writes exactly these bytes as
+      # the record, and only if their content hash is the one that was judged.
+      - name: Keep the verdict and the judged file for the report job
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: verdict
-          path: ${{ runner.temp }}/out/final.json
+          path: |
+            ${{ runner.temp }}/out/final.json
+            ${{ runner.temp }}/out/candidate.rs
           if-no-files-found: ignore
           retention-days: 30
 
@@ -94,6 +98,8 @@ jobs:
       REPO: ${{ github.repository }}
       DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
       SWARMDESK_URL: ${{ vars.SWARMDESK_URL }}
+    outputs:
+      recorded: ${{ steps.act.outputs.recorded }}
     steps:
       - name: Fetch the verdict
         continue-on-error: true
@@ -109,8 +115,19 @@ jobs:
           git -C base fetch -q --depth 1 "https://github.com/${GITHUB_REPOSITORY}.git" "$GITHUB_SHA"
           git -C base checkout -q --detach FETCH_HEAD
 
-      - name: Merge on ACCEPTED, comment, tell the site
+      - name: Write the record on ACCEPTED, comment, tell the site
+        id: act
         env:
           GH_TOKEN: ${{ github.token }}
           VERDICT_SECRET: ${{ secrets.SWARMDESK_VERDICT_SECRET }}
         run: base/scripts/ci-report.sh verdict/final.json
+
+  # No workflow starts by itself on a commit the workflow token made, so the record holders are
+  # checked from here after every new record.
+  selftest:
+    needs: report
+    if: needs.report.outputs.recorded == 'true'
+    permissions:
+      contents: read
+      issues: write
+    uses: ./.github/workflows/selftest.yml

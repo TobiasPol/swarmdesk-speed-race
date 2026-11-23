@@ -97,6 +97,7 @@ fn generate(rng: &mut Rng) -> Vec<Case> {
     cases.extend(random_cases(rng, "block boundary", 2, 54, 130));
     cases.extend(random_cases(rng, "tiny", 5, 1, 16));
     cases.extend(random_cases(rng, "medium", 5, 17, 1024));
+    cases.extend(random_cases(rng, "between", 3, 1025, 4095));
     cases.extend(random_cases(rng, "large", 3, 4096, 65_536));
     cases
 }

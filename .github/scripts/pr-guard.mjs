@@ -5,6 +5,7 @@
 //
 //   node pr-guard.mjs pr <pr.json> <files.json> <tree.json> <commits.json> <repo> <default branch>
 //   node pr-guard.mjs step <steps.json> <step id> <target>
+//   node pr-guard.mjs limits <open pulls.json> <comments.json> <author>
 //
 // Exit 0: prints one JSON object. Exit 1: prints {"refused": "<reason>"}. Exit 3: bad usage.
 import { readFileSync } from 'node:fs';
@@ -13,6 +14,10 @@ import { pathToFileURL } from 'node:url';
 export const FILE_RE = /^targets\/([a-z0-9_]{1,40})\/holder\.rs$/;
 export const BRANCH_RE = /^step-([1-9][0-9]{0,8})$/;
 export const MAX_BYTES = 256 * 1024;
+// One author is judged on at most this many open pull requests at a time, and one pull
+// request at most this many times. Judging costs minutes of a shared machine.
+export const MAX_OPEN = 3;
+export const MAX_VERDICTS = 30;
 const SHA_RE = /^[0-9a-f]{40}$/;
 const LOGIN_RE = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/;
 
@@ -71,6 +76,20 @@ export function checkStep(list, step, target) {
   return { step, target };
 }
 
+// Keeps one author from filling the queue, and one pull request from being judged for ever.
+export function checkLimits(open, comments, author) {
+  if (!Array.isArray(open) || !Array.isArray(comments)) refuse('the limits could not be read');
+  const mine = open.filter((pr) => pr?.user?.login === author).length;
+  if (mine > MAX_OPEN) {
+    refuse(`you have ${mine} open pull requests: at most ${MAX_OPEN} are judged at a time`);
+  }
+  const verdicts = comments.filter((c) => c?.user?.login === 'github-actions[bot]').length;
+  if (verdicts >= MAX_VERDICTS) {
+    refuse(`this pull request has been judged ${MAX_VERDICTS} times: open a new one`);
+  }
+  return { open: mine, verdicts };
+}
+
 const json = (path) => JSON.parse(readFileSync(path, 'utf8'));
 
 function main(argv) {
@@ -81,7 +100,12 @@ function main(argv) {
   if (mode === 'step' && rest.length === 3) {
     return checkStep(json(rest[0]), Number(rest[1]), rest[2]);
   }
-  console.error('usage: pr-guard.mjs pr <pr> <files> <tree> <commits> <repo> <branch> | step <steps> <id> <target>');
+  if (mode === 'limits' && rest.length === 3) {
+    return checkLimits(json(rest[0]), json(rest[1]), rest[2]);
+  }
+  console.error(
+    'usage: pr-guard.mjs pr <pr> <files> <tree> <commits> <repo> <branch> | step <steps> <id> <target> | limits <open> <comments> <author>',
+  );
   process.exit(3);
 }
 
